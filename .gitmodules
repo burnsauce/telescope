@@ -1,0 +1,4 @@
+[submodule "libavr32"]
+	path = libavr32
+	url = http://github.com/burnsauce/libavr32
+	branch = master
