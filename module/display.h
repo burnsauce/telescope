@@ -34,8 +34,11 @@ void d_end(void);
 
 void d_start_data(void);
 
+#ifdef TWO_TIMERS
 void d_assert_chip(void);
-
+#else
+#define d_assert_chip() 
+#endif
 
 static inline void d_col(uint8_t start, uint8_t end) {
     d_assert_chip();

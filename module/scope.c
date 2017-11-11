@@ -6,11 +6,12 @@
 
 static uint16_t samples[SCOPE_CACHE_SIZE];
 static volatile uint32_t sp = 0;
-static int16_t zoom = SCOPE_MAX_ZOOM;
+static int16_t zoom = 1;
 
-void scope_zoom(uint16_t z) {
-    if (z < 1) z = 1;
+void scope_zoom(int16_t z) {
+    if (z == 0) z = 1;
     if (z > SCOPE_MAX_ZOOM) z = SCOPE_MAX_ZOOM;
+    if (-z < SCOPE_MIN_ZOOM) z = 0 - SCOPE_MIN_ZOOM;
     zoom = z;
 }
 
@@ -34,33 +35,34 @@ void scope_init(void) {
     d_end();
 }
 
-
 void scope_process_sample(uint16_t sample) {
     increment_sp();
     samples[sp] = sample;
 }
 
-static inline int32_t get_offset(int32_t offset) {
-    return (int32_t)sp + (offset * zoom);
+static inline int32_t get_offset(uint32_t base, int32_t offset) {
+    if (zoom < 0)
+        return (int32_t)base + (offset * DISPLAY_DIVISOR * ((0 - SCOPE_MIN_ZOOM) / zoom));
+    return (int32_t)base + (offset * DISPLAY_DIVISOR * SCOPE_MIN_ZOOM / zoom);
 }
 
 void scope_draw() {
     static uint8_t count = 0;
-
-    count = (count + 1) % 128;
+    static uint32_t rp = 0;
 
     if (count == 0) {
         display_new_frame();
-        display_clear();
-
-        for (uint8_t i = 1; i <= 128; i++) {
-            uint8_t y = 63 - get_sample(get_offset(-i)) / 256;
-            display_poke(i - 1, y, 1);
-        }
-
+        rp = sp;
     }
+
+
+    count++;
+    uint8_t y = 63 - get_sample(get_offset(rp, -count)) / 64;
+    display_poke(count - 1, y, 1);
 
     if (count % 2 == 0) {
-        display_render_2_cols(count);
+        display_render_2_cols(count - 2);
     }
+
+    count %= 128;
 }

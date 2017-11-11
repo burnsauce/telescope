@@ -101,10 +101,10 @@ static void init_spi (void) {
 	spi_setupChipReg( SPI, &spiOptions, FPBA_HZ );
 }
 
-//    adc_convert(&adc);
 
-static uint16_t last_knob = 0;
+#ifdef TWO_TIMERS
 static volatile bool in_display = false;
+
 
 __attribute__((__interrupt__))
 static void display_callback(void) {
@@ -113,18 +113,44 @@ static void display_callback(void) {
     tc_read_sr(APP_TC, 1);
     in_display = false;
 }
+#endif
+
+static uint16_t last_knob = 0;
 
 __attribute__((__interrupt__))
 static void sample_callback(void) {
+#ifdef TWO_TIMERS
     if (in_display)
         d_end();
+#endif
     adc_convert(&adc);
-    scope_process_sample(adc[0] << 2);
-    uint16_t knob = adc[1];
+    scope_process_sample(adc[0]);
+
+    uint16_t knob = adc[1] / 205;
+
     if (knob != last_knob) {
+        print_dbg("\r\nNew knob: ");
+
         last_knob = knob;
-        scope_zoom(knob / 64);
+
+        if (knob < 10) {
+            scope_zoom(-(int16_t)(1 << (10 - knob)));
+            print_dbg_ulong((1 << (10 - knob)));
+        }
+        else {
+            scope_zoom((int16_t)(1 << (knob - 10)));
+            print_dbg_ulong((1 << (knob - 10)));
+        }
+        print_dbg("\r\n");
+        delay_ms(50);
     }
+
+#ifndef TWO_TIMERS
+    static uint32_t count = 0;
+    count = (count + 1) % DISPLAY_DIVISOR;
+    if (count == 0)
+        scope_draw();
+#endif
 
     tc_read_sr(APP_TC, 0);
 }
@@ -143,16 +169,6 @@ void timer_init(void) {
         .covfs = 0
     };
 
-    static const tc_interrupt_t tc_interrupt_2 = {
-        .etrgs = 0,
-        .ldrbs = 0,
-        .ldras = 0,
-        .cpcs  = 1,
-        .cpbs  = 0,
-        .cpas  = 0,
-        .lovrs = 0,
-        .covfs = 0
-    };
     tc_waveform_opt_t waveform_opt_1 = {
         .channel = 0,
         .bswtrg  = TC_EVT_EFFECT_NOOP,
@@ -171,6 +187,25 @@ void timer_init(void) {
         .cpcstop = false,
         .burst   = false,
         .tcclks  = TC_CLOCK_SOURCE_TC2
+    };
+
+    sysclk_enable_peripheral_clock(APP_TC);
+
+    INTC_register_interrupt(&sample_callback, AVR32_TC_IRQ0, AVR32_INTC_INT0);
+    tc_init_waveform(APP_TC, &waveform_opt_1);
+    tc_write_rc(APP_TC, 0, (FCPU_HZ / SAMPLE_RATE));
+    tc_configure_interrupts(&AVR32_TC, 0, &tc_interrupt_1);
+    tc_start(APP_TC, 0);
+#ifdef TWO_TIMERS
+    static const tc_interrupt_t tc_interrupt_2 = {
+        .etrgs = 0,
+        .ldrbs = 0,
+        .ldras = 0,
+        .cpcs  = 1,
+        .cpbs  = 0,
+        .cpas  = 0,
+        .lovrs = 0,
+        .covfs = 0
     };
     tc_waveform_opt_t waveform_opt_2 = {
         .channel = 1,
@@ -191,23 +226,12 @@ void timer_init(void) {
         .burst   = false,
         .tcclks  = TC_CLOCK_SOURCE_TC2
     };
-
-
-    sysclk_enable_peripheral_clock(APP_TC);
     INTC_register_interrupt(&display_callback, AVR32_TC_IRQ1, AVR32_INTC_INT1);
-    INTC_register_interrupt(&sample_callback, AVR32_TC_IRQ0, AVR32_INTC_INT0);
-
-    tc_init_waveform(APP_TC, &waveform_opt_1);
     tc_init_waveform(APP_TC, &waveform_opt_2);
-    tc_write_rc(APP_TC, 0, (FCPU_HZ / SAMPLE_RATE));
-
-    tc_write_rc(APP_TC, 1, (FCPU_HZ / DISPLAY_RATE));
-
-    tc_configure_interrupts(&AVR32_TC, 0, &tc_interrupt_1);
+    tc_write_rc(APP_TC, 1, (sysclk_get_pba_hz() / DISPLAY_RATE));
     tc_configure_interrupts(&AVR32_TC, 1, &tc_interrupt_2);
-
-    tc_start(APP_TC, 0);
     tc_start(APP_TC, 1);
+#endif
 }
         
 int main(void) {
@@ -230,8 +254,9 @@ int main(void) {
 #endif
 
 
-    irq_initialize_vectors();
     scope_init();
+
+    irq_initialize_vectors();
     Disable_global_interrupt();
     timer_init();
     Enable_global_interrupt();

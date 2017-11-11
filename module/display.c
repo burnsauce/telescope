@@ -1,3 +1,9 @@
+/*
+ * display.c (c) 2017 Poindexter Frink
+ *
+ * SSD1325 display driver
+ */
+
 #include "display.h"
 
 static uint8_t chip_selected = 0;
@@ -9,10 +15,12 @@ void select_chip(void) {
     chip_selected = 1;
 }
 
+#ifdef TWO_TIMERS
 void d_assert_chip(void) {
     if (!chip_selected)
         select_chip();
 }
+#endif
 
 static inline void select_data(void) {
     gpio_set_gpio_pin(OLED_DC_PIN);
