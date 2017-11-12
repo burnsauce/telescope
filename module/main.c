@@ -129,20 +129,15 @@ static void sample_callback(void) {
     uint16_t knob = adc[1] / 205;
 
     if (knob != last_knob) {
-        print_dbg("\r\nNew knob: ");
 
         last_knob = knob;
 
         if (knob < 10) {
             scope_zoom(-(int16_t)(1 << (10 - knob)));
-            print_dbg_ulong((1 << (10 - knob)));
         }
         else {
             scope_zoom((int16_t)(1 << (knob - 10)));
-            print_dbg_ulong((1 << (knob - 10)));
         }
-        print_dbg("\r\n");
-        delay_ms(50);
     }
 
 #ifndef TWO_TIMERS
